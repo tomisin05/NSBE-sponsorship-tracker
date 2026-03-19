@@ -42,13 +42,13 @@ const COMPANIES = [
 ].sort();
 
 const FIELDS = [
-  { key: "sponsors_opt", label: "Sponsors OPT", icon: "✅", color: "#22c55e" },
-  { key: "sponsors_cpt", label: "Sponsors CPT", icon: "📋", color: "#3b82f6" },
-  { key: "requires_work_auth", label: "Requires Work Authorization", icon: "🔒", color: "#f59e0b" },
-  { key: "requires_citizenship", label: "Requires U.S. Citizenship", icon: "🇺🇸", color: "#ef4444" },
-  { key: "requires_advanced_degree", label: "Requires Advanced Degree to Sponsor (MS/PhD)", icon: "🎓", color: "#8b5cf6" },
-  { key: "does_not_sponsor", label: "Does Not Sponsor", icon: "❌", color: "#f43f5e" },
-  { key: "offering_interviews", label: "Offering In-Person Interviews", icon: "🤝", color: "#06b6d4" },
+  { key: "sponsors_opt", label: "Sponsors OPT", short: "OPT", icon: "✅", color: "#22c55e" },
+  { key: "sponsors_cpt", label: "Sponsors CPT", short: "CPT", icon: "📋", color: "#3b82f6" },
+  { key: "requires_work_auth", label: "Requires Work Authorization", short: "Work Auth", icon: "🔒", color: "#f59e0b" },
+  { key: "requires_citizenship", label: "Requires U.S. Citizenship", short: "Citizenship", icon: "🇺🇸", color: "#ef4444" },
+  { key: "requires_advanced_degree", label: "Requires Advanced Degree to Sponsor (MS/PhD)", short: "MS/PhD", icon: "🎓", color: "#8b5cf6" },
+  { key: "does_not_sponsor", label: "Does Not Sponsor", short: "No Sponsor", icon: "❌", color: "#f43f5e" },
+  { key: "offering_interviews", label: "Offering In-Person Interviews", short: "Interviews", icon: "🤝", color: "#06b6d4" },
 ];
 
 function formatTime(iso) {
@@ -73,6 +73,31 @@ export default function App() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeTab, setActiveTab] = useState("browse");
   const [error, setError] = useState(null);
+  const [allReports, setAllReports] = useState([]);
+  const [tableFilter, setTableFilter] = useState("");
+  const [sponsorFilter, setSponsorFilter] = useState("");
+
+  useEffect(() => {
+    if (activeTab !== "overview") return;
+    supabase.from("reports").select("*").then(({ data }) => {
+      if (data) setAllReports(data);
+    });
+  }, [activeTab]);
+
+  // Aggregate all reports by company
+  const companyMap = {};
+  allReports.forEach(r => {
+    if (!companyMap[r.company]) companyMap[r.company] = { count: 0 };
+    companyMap[r.company].count++;
+    FIELDS.forEach(f => {
+      if (r[f.key]) companyMap[r.company][f.key] = true;
+    });
+  });
+
+  const tableRows = Object.entries(companyMap)
+    .filter(([name]) => name.toLowerCase().includes(tableFilter.toLowerCase()))
+    .filter(([, data]) => !sponsorFilter || data[sponsorFilter])
+    .sort((a, b) => a[0].localeCompare(b[0]));
 
   const filtered = COMPANIES.filter(c =>
     c.toLowerCase().includes(search.toLowerCase())
@@ -205,6 +230,7 @@ export default function App() {
       <div style={{ display: "flex", borderBottom: "1px solid #21262d", background: "#161b22" }}>
         {[
           { id: "browse", label: "🔍 Look Up Company" },
+          { id: "overview", label: "📊 All Companies" },
           { id: "how", label: "📖 How to Use" },
         ].map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
@@ -220,6 +246,84 @@ export default function App() {
       </div>
 
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "20px 16px" }}>
+
+        {activeTab === "overview" && (
+          <div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <input
+                value={tableFilter}
+                onChange={e => setTableFilter(e.target.value)}
+                placeholder="Filter by company..."
+                style={{
+                  flex: 1, minWidth: 160, padding: "9px 14px", borderRadius: 8,
+                  border: "1px solid #30363d", background: "#161b22",
+                  color: "#e6edf3", fontSize: 13, outline: "none",
+                }}
+              />
+              <select
+                value={sponsorFilter}
+                onChange={e => setSponsorFilter(e.target.value)}
+                style={{
+                  padding: "9px 12px", borderRadius: 8,
+                  border: "1px solid #30363d", background: "#161b22",
+                  color: sponsorFilter ? "#e6edf3" : "#8b949e", fontSize: 13, outline: "none",
+                }}
+              >
+                <option value="">All statuses</option>
+                {FIELDS.map(f => (
+                  <option key={f.key} value={f.key}>{f.icon} {f.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {tableRows.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#8b949e", fontSize: 14 }}>
+                {allReports.length === 0 ? "No reports submitted yet." : "No companies match your filters."}
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #30363d" }}>
+                      <th style={{ textAlign: "left", padding: "8px 10px", color: "#8b949e", fontWeight: 700, whiteSpace: "nowrap" }}>Company</th>
+                      <th style={{ textAlign: "center", padding: "8px 6px", color: "#8b949e", fontWeight: 700 }}>#</th>
+                      {FIELDS.map(f => (
+                        <th key={f.key} style={{ textAlign: "center", padding: "8px 6px", color: f.color, fontWeight: 700, whiteSpace: "nowrap" }}>
+                          {f.short}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableRows.map(([name, data]) => (
+                      <tr
+                        key={name}
+                        onClick={() => { handleSelect(name); setActiveTab("browse"); }}
+                        style={{ borderBottom: "1px solid #21262d", cursor: "pointer" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "#161b22"}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                      >
+                        <td style={{ padding: "9px 10px", color: "#e6edf3", fontWeight: 600, whiteSpace: "nowrap" }}>{name}</td>
+                        <td style={{ textAlign: "center", padding: "9px 6px", color: "#8b949e" }}>{data.count}</td>
+                        {FIELDS.map(f => (
+                          <td key={f.key} style={{ textAlign: "center", padding: "9px 6px" }}>
+                            {data[f.key]
+                              ? <span style={{ color: f.color, fontSize: 14 }}>●</span>
+                              : <span style={{ color: "#30363d", fontSize: 14 }}>○</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ marginTop: 12, fontSize: 11, color: "#8b949e", textAlign: "center" }}>
+              Showing {tableRows.length} companies with reports · Click a row to view details
+            </div>
+          </div>
+        )}
 
         {activeTab === "how" && (
           <div>
