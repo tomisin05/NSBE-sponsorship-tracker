@@ -47,7 +47,7 @@ const FIELDS = [
   { key: "requires_work_auth", label: "Requires Work Authorization", short: "Work Auth", icon: "🔒", color: "#f59e0b" },
   { key: "requires_citizenship", label: "Requires U.S. Citizenship", short: "Citizenship", icon: "🇺🇸", color: "#ef4444" },
   { key: "requires_advanced_degree", label: "Requires Advanced Degree to Sponsor (MS/PhD)", short: "MS/PhD", icon: "🎓", color: "#8b5cf6" },
-  { key: "does_not_sponsor", label: "Does Not Sponsor", short: "No Sponsor", icon: "❌", color: "#f43f5e" },
+  { key: "does_not_sponsor", label: "Does Not Sponsor H1-B", short: "No H1-B", icon: "❌", color: "#f43f5e" },
   { key: "offering_interviews", label: "Offering In-Person Interviews", short: "Interviews", icon: "🤝", color: "#06b6d4" },
 ];
 
@@ -73,6 +73,7 @@ export default function App() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeTab, setActiveTab] = useState("browse");
   const [error, setError] = useState(null);
+  const [editingEntry, setEditingEntry] = useState(null);
   const [allReports, setAllReports] = useState([]);
   const [tableFilter, setTableFilter] = useState("");
   const [sponsorFilter, setSponsorFilter] = useState("");
@@ -154,6 +155,25 @@ export default function App() {
     setShowDropdown(false);
     setCheckboxes(Object.fromEntries(FIELDS.map(f => [f.key, false])));
     setNotes("");
+    setEditingEntry(null);
+  };
+
+  const handleEdit = (entry) => {
+    setEditingEntry(entry);
+    setCheckboxes(Object.fromEntries(FIELDS.map(f => [f.key, !!entry[f.key]])));
+    setNotes(entry.notes || "");
+    setShowForm(true);
+    setSubmitted(false);
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Delete this report?")) return;
+    const { error } = await supabase.from("reports").delete().eq("id", id);
+    if (error) {
+      setError("Failed to delete. Please try again.");
+    } else {
+      setEntries(prev => prev.filter(e => e.id !== id));
+    }
   };
 
   const handleSubmit = async () => {
@@ -161,17 +181,26 @@ export default function App() {
     setSubmitting(true);
     setError(null);
 
-    const { error } = await supabase.from("reports").insert([{
-      company: selectedCompany,
-      ...checkboxes,
-      notes: notes.trim() || null,
-    }]);
+    let error;
+    if (editingEntry) {
+      ({ error } = await supabase.from("reports").update({
+        ...checkboxes,
+        notes: notes.trim() || null,
+      }).eq("id", editingEntry.id));
+    } else {
+      ({ error } = await supabase.from("reports").insert([{
+        company: selectedCompany,
+        ...checkboxes,
+        notes: notes.trim() || null,
+      }]));
+    }
 
     if (error) {
       setError("Failed to save. Please try again.");
     } else {
       setSubmitted(true);
       setShowForm(false);
+      setEditingEntry(null);
       setCheckboxes(Object.fromEntries(FIELDS.map(f => [f.key, false])));
       setNotes("");
       loadEntries(selectedCompany);
@@ -208,6 +237,7 @@ export default function App() {
         padding: "24px 20px 20px",
         textAlign: "center",
       }}>
+        <img src="/logo.png" alt="NSBE Logo" style={{ height: 60, marginBottom: 10 }} />
         <div style={{ fontSize: 11, letterSpacing: 3, color: "#3fb950", fontWeight: 700, marginBottom: 6 }}>
           NSBE 2026 BALTIMORE · CAREER FAIR
         </div>
@@ -377,7 +407,7 @@ export default function App() {
                   color: "#e6edf3", fontSize: 15, outline: "none",
                 }}
               />
-              {showDropdown && search && filtered.length > 0 && (
+              {showDropdown && search && (
                 <div style={{
                   position: "absolute", top: "100%", left: 0, right: 0,
                   background: "#1c2128", border: "1px solid #30363d",
@@ -394,6 +424,15 @@ export default function App() {
                       {c}
                     </div>
                   ))}
+                  {!filtered.some(c => c.toLowerCase() === search.toLowerCase()) && (
+                    <div onClick={() => handleSelect(search.trim())} style={{
+                      padding: "10px 16px", cursor: "pointer", fontSize: 14,
+                      color: "#3fb950", fontWeight: 700,
+                      borderTop: filtered.length > 0 ? "1px solid #30363d" : "none",
+                    }}>
+                      + Add "{search.trim()}"
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -419,7 +458,7 @@ export default function App() {
                       {loading ? "Loading..." : `${entries.length} report${entries.length !== 1 ? "s" : ""} submitted`}
                     </div>
                   </div>
-                  <button onClick={() => { setShowForm(!showForm); setSubmitted(false); }} style={{
+                  <button onClick={() => { setShowForm(!showForm); setSubmitted(false); setEditingEntry(null); setCheckboxes(Object.fromEntries(FIELDS.map(f => [f.key, false]))); setNotes(""); }} style={{
                     background: showForm ? "#21262d" : "#238636",
                     border: "1px solid " + (showForm ? "#30363d" : "#2ea043"),
                     color: "#fff", borderRadius: 8, padding: "8px 16px",
@@ -483,7 +522,7 @@ export default function App() {
                 {showForm && (
                   <div style={cardStyle}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#e6edf3", marginBottom: 14 }}>
-                      Your Report for {selectedCompany}
+                      {editingEntry ? "Edit Report" : `Your Report for ${selectedCompany}`}
                     </div>
                     {FIELDS.map(f => (
                       <label key={f.key} style={{
@@ -534,7 +573,7 @@ export default function App() {
                         fontSize: 14, fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer",
                       }}
                     >
-                      {submitting ? "Saving..." : "Submit & Share with All Students ✓"}
+                      {submitting ? "Saving..." : editingEntry ? "Save Changes ✓" : "Submit & Share with All Students ✓"}
                     </button>
                     <p style={{ margin: "8px 0 0", fontSize: 11, color: "#8b949e", textAlign: "center" }}>
                       Your report will be visible to all NSBE students using this app.
@@ -554,10 +593,22 @@ export default function App() {
                       }}>
                         <div style={{
                           fontSize: 11, color: "#8b949e", fontWeight: 600,
-                          marginBottom: 10, display: "flex", justifyContent: "space-between",
+                          marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center",
                         }}>
                           <span>Report #{entries.length - i}</span>
-                          <span>🕐 {formatTime(entry.created_at)}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span>🕐 {formatTime(entry.created_at)}</span>
+                            <button onClick={() => handleEdit(entry)} style={{
+                              background: "#1c2128", border: "1px solid #30363d",
+                              color: "#8b949e", borderRadius: 6, padding: "2px 8px",
+                              fontSize: 11, cursor: "pointer", fontWeight: 600,
+                            }}>✏️ Edit</button>
+                            <button onClick={() => handleDelete(entry.id)} style={{
+                              background: "#2d1b1b", border: "1px solid #f43f5e44",
+                              color: "#f43f5e", borderRadius: 6, padding: "2px 8px",
+                              fontSize: 11, cursor: "pointer", fontWeight: 600,
+                            }}>🗑 Delete</button>
+                          </div>
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: entry.notes ? 10 : 0 }}>
                           {FIELDS.map(f => entry[f.key] && (
