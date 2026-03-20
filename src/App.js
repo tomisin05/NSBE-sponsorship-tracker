@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabaseClient";
+import { Analytics } from "@vercel/analytics/react";
 
 const COMPANIES = [
   "3M", "ABB, Inc.", "Abbott", "Accenture", "ACTS", "AECOM", "Air Products", "Airbus",
